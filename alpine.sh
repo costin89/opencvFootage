@@ -1,38 +1,49 @@
-#!/bin/bash
+#!/bin/sh
 
-echo "Starte vollständiges Openbox-Setup mit Icons, Themen und Tools..."
+echo " Starte Openbox-Setup unter Alpine Linux..."
 
 # System aktualisieren
-sudo apt update && sudo apt upgrade -y
+sudo apk update && sudo apk upgrade
 
-# Openbox + Tools
-sudo apt install --no-install-recommends \
-openbox xinit lightdm lightdm-gtk-greeter lxterminal pcmanfm feh nitrogen conky \
-mousepad geany glade epiphany-browser xpad mate-calc onboard arandr \
-git gitg gftp lxtask htop obconf lxappearance \
-network-manager network-manager-gnome blueman pulseaudio pavucontrol \
-trash-cli xdg-utils tightvncserver -y
+# Benutzer 'admin' erstellen, falls nicht vorhanden
+adduser -D admin
+echo "admin:admin" | chpasswd
+addgroup admin wheel
+echo "%wheel ALL=(ALL) ALL" >> /etc/sudoers
+
+# X, Openbox und Tools
+sudo apk add openbox xinit lightdm lightdm-gtk-greeter \
+lxterminal pcmanfm feh conky mousepad geany arandr \
+git gftp lxtask htop obconf lxappearance \
+networkmanager network-manager-applet blueman \
+pulseaudio pulsemixer xdg-utils tightvnc
 
 # Themes & Icons
-sudo apt install adwaita-icon-theme gnome-icon-theme tango-icon-theme \
-gtk2-engines-murrine gtk2-engines-pixbuf -y
+sudo apk add adwaita-icon-theme gnome-icon-theme tango-icon-theme \
+gtk-engine-murrine gtk+2.0-engine-pixbuf
 
-# Python + Dev
-sudo apt install build-essential g++ python3 python3-pip -y
+# LightDM konfigurieren (Autologin für admin)
+sudo sed -i '/^\[Seat:\*\]/a autologin-user=admin\nautologin-session=openbox' /etc/lightdm/lightdm.conf
 
-# Autologin aktivieren
-sudo sed -i '/^\[Seat:\*\]/a autologin-user=pi\nautologin-session=openbox' /etc/lightdm/lightdm.conf
+# Autostart NetworkManager & Bluetooth
+sudo rc-update add NetworkManager
+sudo rc-service NetworkManager start
 
-# Bluetooth-Dienst aktivieren
-sudo systemctl enable bluetooth
-sudo systemctl start bluetooth
+sudo rc-update add bluetooth
+sudo rc-service bluetooth start
 
-# Openbox-Konfiguration
-mkdir -p ~/.config/openbox
-cp /etc/xdg/openbox/{rc.xml,autostart} ~/.config/openbox/
+# Autostart LightDM
+sudo rc-update add lightdm
+sudo rc-service lightdm start
 
-# Autostart
-cat > ~/.config/openbox/autostart <<EOF
+# Konfigurationsdateien für admin einrichten
+su - admin -c 'mkdir -p ~/.config/openbox ~/.config/conky ~/.vnc'
+
+# Openbox Default Config kopieren
+su - admin -c 'cp /etc/xdg/openbox/{rc.xml,autostart} ~/.config/openbox/'
+
+# Autostart-Datei schreiben
+cat > /home/admin/.config/openbox/autostart <<EOF
 nitrogen --restore &
 pcmanfm &
 conky &
@@ -41,15 +52,14 @@ blueman-applet &
 lxterminal &
 EOF
 
-# .xsession
-cat > ~/.xsession <<EOF
+# .xsession für X
+cat > /home/admin/.xsession <<EOF
 exec openbox-session
 EOF
-chmod +x ~/.xsession
+chmod +x /home/admin/.xsession
 
-# Conky (alte Syntax)
-mkdir -p ~/.config/conky
-cat > ~/.config/conky/conky.conf <<'EOF'
+# Conky Config
+cat > /home/admin/.config/conky/conky.conf <<'EOF'
 background yes
 use_xft yes
 xftfont monospace:size=10
@@ -83,18 +93,17 @@ Up:   ${upspeedf wlan0} kB/s
 IP: ${addr wlan0}
 EOF
 
-# VNC xstartup
-mkdir -p ~/.vnc
-cat > ~/.vnc/xstartup <<'EOF'
+# VNC-Startskript
+cat > /home/admin/.vnc/xstartup <<'EOF'
 #!/bin/sh
 xrdb $HOME/.Xresources
 export XKL_XMODMAP_DISABLE=1
 openbox-session &
 EOF
-chmod +x ~/.vnc/xstartup
+chmod +x /home/admin/.vnc/xstartup
 
-# Openbox-Menü
-cat > ~/.config/openbox/menu.xml <<'EOF'
+# Menü-Datei schreiben
+cat > /home/admin/.config/openbox/menu.xml <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <openbox_menu xmlns="http://openbox.org/3.4/menu">
 
@@ -106,146 +115,86 @@ cat > ~/.config/openbox/menu.xml <<'EOF'
 
     <separator/>
 
-    <item label="Task-Manager (LXTASK)">
-      <action name="Execute"><command>sh -c 'lxtask'</command></action>
+    <item label="Dateimanager (PCManFM)">
+      <action name="Execute"><command>pcmanfm</command></action>
+    </item>
+
+    <item label="Wallpaper ändern (Nitrogen)">
+      <action name="Execute"><command>nitrogen</command></action>
+    </item>
+
+    <item label="Netzwerk Einstellungen">
+      <action name="Execute"><command>nm-connection-editor</command></action>
+    </item>
+
+    <item label="Bluetooth">
+      <action name="Execute"><command>blueman-manager</command></action>
+    </item>
+
+    <item label="Audio Einstellungen">
+      <action name="Execute"><command>pulsemixer</command></action>
+    </item>
+
+    <item label="Task-Manager">
+      <action name="Execute"><command>lxtask</command></action>
+    </item>
+
+    <item label="Prozesse (htop)">
+      <action name="Execute"><command>lxterminal -e htop</command></action>
+    </item>
+
+    <item label="Editor (Mousepad)">
+      <action name="Execute"><command>mousepad</command></action>
+    </item>
+
+    <item label="Editor (Geany)">
+      <action name="Execute"><command>geany</command></action>
+    </item>
+
+    <item label="FTP-Client (gFTP)">
+      <action name="Execute"><command>gftp</command></action>
+    </item>
+
+    <item label="Bildschirm (ARandR)">
+      <action name="Execute"><command>arandr</command></action>
+    </item>
+
+    <item label="VNC-Server starten">
+      <action name="Execute"><command>lxterminal -e 'vncserver :1'</command></action>
+    </item>
+
+    <item label="VNC-Server stoppen">
+      <action name="Execute"><command>lxterminal -e 'vncserver -kill :1'</command></action>
     </item>
 
     <separator/>
 
-    <item label="Papierkorb leeren (Trash)">
-      <action name="Execute"><command>lxterminal -e trash-empty</command></action>
+    <item label="Menü neu laden">
+      <action name="Execute"><command>openbox --reconfigure</command></action>
     </item>
 
-    <menu id="system" label="System">
-      <item label="Dateimanager (PCManFM)">
-        <action name="Execute"><command>pcmanfm</command></action>
-      </item>
-      <item label="Papierkorb öffnen">
-        <action name="Execute"><command>pcmanfm trash://</command></action>
-      </item>
-      <item label="Audio Einstellungen (PulseAudio)">
-        <action name="Execute"><command>pavucontrol</command></action>
-      </item>
-      <item label="Bluetooth Verwaltung (Blueman)">
-        <action name="Execute"><command>blueman-manager</command></action>
-      </item>
-      <item label="Netzwerk Einstellungen (nm-connection-editor)">
-        <action name="Execute"><command>nm-connection-editor</command></action>
-      </item>
-      <item label="Prozessanzeige (htop)">
-        <action name="Execute"><command>lxterminal -e htop</command></action>
-      </item>
-      <item label="Monitor (Bildschirm drehen)">
-        <action name="Execute"><command>sh -c 'arandr'</command></action>
-      </item>
-    </menu>
-
-    <menu id="internet" label="Internet">
-      <item label="Webbrowser (Epiphany)">
-        <action name="Execute"><command>sh -c 'epiphany-browser'</command></action>
-      </item>
-      <item label="FTP-Client (gFTP)">
-        <action name="Execute"><command>sh -c 'gftp'</command></action>
-      </item>
-    </menu>
-
-    <menu id="entwicklung" label="Entwicklung">
-      <item label="Geany Editor">
-        <action name="Execute"><command>geany</command></action>
-      </item>
-      <item label="GTK Designer (Glade)">
-        <action name="Execute"><command>glade</command></action>
-      </item>
-      <item label="Git-Viewer (Gitg)">
-        <action name="Execute"><command>sh -c 'gitg'</command></action>
-      </item>
-    </menu>
-
-    <menu id="extras" label="Extras & Zubehör">
-      <item label="Texteditor (Mousepad)">
-        <action name="Execute"><command>mousepad</command></action>
-      </item>
-      <item label="Taschenrechner (Mate Calc)">
-        <action name="Execute"><command>sh -c 'mate-calc'</command></action>
-      </item>
-      <item label="Notizen (Xpad)">
-        <action name="Execute"><command>sh -c 'xpad'</command></action>
-      </item>
-      <item label="Virtuelle Tastatur (Onboard)">
-        <action name="Execute"><command>sh -c 'onboard'</command></action>
-      </item>
-      <item label="Bildbetrachter (feh)">
-        <action name="Execute"><command>feh</command></action>
-      </item>
-      <item label="Wallpaper ändern (Nitrogen)">
-        <action name="Execute"><command>nitrogen</command></action>
-      </item>
-    </menu>
-
-    <menu id="vnc" label="VNC">
-      <item label="VNC-Server starten (:1)">
-        <action name="Execute"><command>lxterminal -e 'vncserver :1'</command></action>
-      </item>
-      <item label="VNC-Server stoppen (:1)">
-        <action name="Execute"><command>lxterminal -e 'vncserver -kill :1'</command></action>
-      </item>
-    </menu>
-
-    <menu id="helfer" label="Helfer">
-      <item label="System aktualisieren">
-        <action name="Execute"><command>lxterminal -e 'sudo apt update && sudo apt upgrade -y'</command></action>
-      </item>
-      <item label="Python + Pip aktualisieren">
-        <action name="Execute"><command>lxterminal -e 'sudo pip3 install --upgrade pip && sudo apt install --only-upgrade python3'</command></action>
-      </item>
-      <item label="Monitor drehen: normal">
-        <action name="Execute"><command>lxterminal -e 'xrandr --output HDMI-1 --rotate normal'</command></action>
-      </item>
-      <item label="Monitor drehen: rechts">
-        <action name="Execute"><command>lxterminal -e 'xrandr --output HDMI-1 --rotate right'</command></action>
-      </item>
-      <item label="Monitor drehen: 180°">
-        <action name="Execute"><command>lxterminal -e 'xrandr --output HDMI-1 --rotate inverted'</command></action>
-      </item>
-      <item label="Monitor drehen: links">
-        <action name="Execute"><command>lxterminal -e 'xrandr --output HDMI-1 --rotate left'</command></action>
-      </item>
-    </menu>
-
-    <menu id="obmenu" label="obmenu">
-      <item label="Menü neu laden">
-        <action name="Execute"><command>openbox --reconfigure</command></action>
-      </item>
-      <item label="Menü bearbeiten (Mousepad)">
-        <action name="Execute"><command>mousepad ~/.config/openbox/menu.xml</command></action>
-      </item>
-      <item label="Openbox Einstellungen (obconf)">
-        <action name="Execute"><command>sh -c 'obconf'</command></action>
-      </item>
-      <item label="Design & Icons (LXAppearance)">
-        <action name="Execute"><command>lxappearance</command></action>
-      </item>
-    </menu>
+    <item label="Design & Icons (LXAppearance)">
+      <action name="Execute"><command>lxappearance</command></action>
+    </item>
 
     <separator/>
 
-    <menu id="session" label="Systemsteuerung">
-      <item label="Neustart">
-        <action name="Execute"><command>systemctl reboot</command></action>
-      </item>
-      <item label="Herunterfahren">
-        <action name="Execute"><command>systemctl poweroff</command></action>
-      </item>
-      <item label="Abmelden">
-        <action name="Exit"/>
-      </item>
-    </menu>
+    <item label="Neustart">
+      <action name="Execute"><command>reboot</command></action>
+    </item>
+
+    <item label="Herunterfahren">
+      <action name="Execute"><command>poweroff</command></action>
+    </item>
 
   </menu>
 
 </openbox_menu>
 EOF
 
-echo "Setup abgeschlossen!"
-echo "Menü neu laden: openbox --reconfigure"
-echo "Icons & Design ändern: lxappearance"
+# Rechte korrigieren
+chown -R admin:admin /home/admin
+
+echo "Openbox-Setup abgeschlossen!"
+echo " Benutzer: admin / Passwort: admin"
+echo " Menü neu laden: openbox --reconfigure"
